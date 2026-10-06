@@ -1,0 +1,1 @@
+import{n as e,t}from"./jsx-runtime-BpGWiA-R.js";import{r as n}from"./chunk-LFPYN7LY-BKdk3Y5X.js";var r=e(),i=t();function a(e){let t=(0,r.c)(1),{children:a}=e,o=localStorage.getItem(`isAdminLoggedIn`)===`true`;if(!o){let e;return t[0]===Symbol.for(`react.memo_cache_sentinel`)?(e=(0,i.jsx)(n,{to:`/login`,replace:!0}),t[0]=e):e=t[0],e}if(o)return a}export{a as default};

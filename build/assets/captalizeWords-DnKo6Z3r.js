@@ -1,0 +1,1 @@
+var e=(e=``)=>e?e.replace(/[^a-zA-Z0-9\s]/g,` `).split(` `).filter(e=>e).map(e=>e.charAt(0).toUpperCase()+e.slice(1).toLowerCase()).join(` `):``;export{e as t};

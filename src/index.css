@@ -1,0 +1,61 @@
+@import "tailwindcss";
+body {
+  font-family: "Inter", sans-serif;
+}
+
+:root {
+  --text: #ffffff;
+
+  --bg: linear-gradient(
+    to bottom right,
+    #1e2f4f,
+    #2a4470,
+    #1e2f4f
+  );
+
+  --sectionBg: linear-gradient(
+    to bottom right,
+    rgba(255, 255, 255, 0.1),
+    rgba(255, 255, 255, 0.05)
+  );
+
+  --dashboardNavigatorBg: #ff6b35;
+  --border: rgba(255, 255, 255, 0.2);
+
+  --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+            0 4px 6px -2px rgba(0, 0, 0, 0.05);
+
+  letter-spacing: 0.18px;
+  font-synthesis: none;
+}
+
+@media (max-width: 1024px) {
+  :root {
+    font-size: 16px;
+  }
+}
+
+/* Add to your global styles */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(34, 211, 238, 0.3) rgba(255, 255, 255, 0.05);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(34, 211, 238, 0.3);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(34, 211, 238, 0.5);
+}
+

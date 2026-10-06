@@ -1,0 +1,1 @@
+var e=e=>{if(!e)return`—`;let t=e instanceof Date?e:new Date(e);return isNaN(t.getTime())?`—`:t.toLocaleDateString(`en-GB`,{year:`numeric`,month:`2-digit`,day:`2-digit`})},t=e=>{if(!e)return`—`;let t=e instanceof Date?e:new Date(e);return isNaN(t.getTime())?`—`:t.toLocaleTimeString(`en-US`,{hour:`2-digit`,minute:`2-digit`,hour12:!0})};export{t as n,e as t};
