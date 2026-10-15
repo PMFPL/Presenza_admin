@@ -1,5 +1,5 @@
-const API_BASE_URL ='https://api-presenza.paulmerchants.net/api/v1/admin';   //Live
-// const API_BASE_URL ='https://api-uat-presenza.paulmerchants.net/api/v1/admin';   //UAT
+// const API_BASE_URL ='https://api-presenza.paulmerchants.net/api/v1/admin';   //Live
+const API_BASE_URL ='https://api-uat-presenza.paulmerchants.net/api/v1/admin';   //UAT
 
 
 export const apiCall = async ({

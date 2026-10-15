@@ -60,13 +60,43 @@ function RequestedExpanseList() {
     });
   }, [filteredExpanseList, searchTerm]);
 
-  // ---- Calculate total amount from expenses ----
-  const calculateTotal = (expenses) => {
-    if (!expenses || typeof expenses !== 'object') return 0;
-    return Object.values(expenses).reduce(
-      (sum, expense) => sum + (Number(expense?.amount) || 0),
-      0
-    );
+  // ---- Calculate reimbursement amount ----
+  // ✅ Uses API's selfPaidAmount (already includes SELF-paid expenses + miscItems).
+  // Falls back to manual calculation if selfPaidAmount is missing/null.
+  const calculateReimbursement = (row) => {
+    // 1️⃣ Preferred: API-provided selfPaidAmount
+    if (row?.selfPaidAmount !== undefined && row?.selfPaidAmount !== null) {
+      return Number(row.selfPaidAmount) || 0;
+    }
+
+    // 2️⃣ Fallback: sum SELF-paid amounts from expenses + miscItems
+    let total = 0;
+
+    // Add SELF-paid items from expenses
+    if (row?.expenses && typeof row.expenses === 'object') {
+      Object.values(row.expenses).forEach((expense) => {
+        if (
+          expense &&
+          String(expense.paymentMethod || '').toUpperCase() === 'SELF'
+        ) {
+          total += Number(expense.amount) || 0;
+        }
+      });
+    }
+
+    // Add SELF-paid items from miscItems
+    if (Array.isArray(row?.miscItems)) {
+      row.miscItems.forEach((item) => {
+        if (
+          item &&
+          String(item.paymentMethod || '').toUpperCase() === 'SELF'
+        ) {
+          total += Number(item.amount) || 0;
+        }
+      });
+    }
+
+    return total;
   };
 
   // ---- Download individual PDF ----
@@ -223,7 +253,7 @@ function RequestedExpanseList() {
                     </tr>
                   ) : (
                     finalList.map((row, index) => {
-                      const totalAmount = calculateTotal(row.expenses);
+                      const totalAmount = calculateReimbursement(row);
                       const hasReceipt = !!(
                         row.receipt ||
                         row.receiptUrl ||
@@ -295,9 +325,9 @@ function RequestedExpanseList() {
                               : '-'}
                           </td>
 
-                          {/* Amount */}
-                          <td className="px-4 py-4 text-sm font-semibold text-white">
-                            ₹{totalAmount}
+                          {/* Reimbursement Amount */}
+                          <td className="px-4 py-4 text-sm font-semibold text-emerald-400">
+                            ₹{totalAmount.toLocaleString('en-IN')}
                           </td>
 
                           {/* Status */}
