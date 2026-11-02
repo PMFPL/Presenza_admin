@@ -14,12 +14,14 @@ export const useLogIn = () => {
         email: username,
         password: password
       });
-      console.log(res);
+      // console.log(res);
       if (res?.ok || res?.status === 200) {
         localStorage.setItem('authToken', res.data.data.tokens.access.token);
         localStorage.setItem('isAdminLoggedIn', 'true');
         localStorage.setItem('Role',res.data.data.user?.role);
         localStorage.setItem('userName',res.data.data.user?.fullName);
+        localStorage.setItem('userEmail',res.data.data.user?.email);
+        localStorage.setItem('userId',res.data.data.user?.id);
         navigate('/dashboard');
       } else {
         alert(res.message || 'Login failed');

@@ -17,12 +17,12 @@ import {
 } from 'lucide-react';
 import { captalizeWords } from '../../utils/captalizeWords';
 import { formatedDate } from '../../utils/formateddateAndTime';
+import html2pdf from 'html2pdf.js'; 
 
 const ExpanseDetailModal = ({
     expense,
     onClose,
     onViewReceipt,
-    onDownloadPDF,
     onApprove,
     onReject,
 }) => {
@@ -206,6 +206,153 @@ const ExpanseDetailModal = ({
         }
     };
 
+    // ✅ Handle PDF Download matching the screenshot format
+    const handleDownloadPDF = () => {
+        // Aggregate the amounts into categories for the table
+        let travelAmount = 0, roomAmount = 0, foodAmount = 0, otherAmount = 0;
+        
+        expenseItems.forEach(item => {
+            const type = item.type.toLowerCase();
+            if (type.includes('travel')) travelAmount += item.amount;
+            else if (type.includes('hotel') || type.includes('room')) roomAmount += item.amount;
+            else if (type.includes('food')) foodAmount += item.amount;
+            else otherAmount += item.amount;
+        });
+        
+        miscItems.forEach(item => {
+            otherAmount += item.amount;
+        });
+
+        const claimMonth = expense.createdAt 
+            ? new Date(expense.createdAt).toLocaleString('default', { month: 'long', year: 'numeric' }) 
+            : '-';
+
+        // 1. Create the HTML string that mimics the screenshot
+        const htmlContent = `
+            <div style="font-family: Arial, sans-serif; font-size: 11px; max-width: 800px; margin: 0 auto; border: 1px solid #000; background: #fff; color: #000;">
+                <!-- Top Yellow Header (Centered) -->
+                <div style="background-color: #FFD700; padding: 4px 8px; font-weight: bold; border-bottom: 1px solid #000; font-size: 12px; text-align: center;">
+                    Paul Merchants
+                </div>
+                
+                <!-- Main Title -->
+                <div style="text-align: center; border-bottom: 1px solid #000; padding: 8px 0;">
+                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 4px;">PAUL MERCHANTS FINANCE PRIVATE LIMITED</div>
+                    <div style="font-size: 12px; font-weight: bold;">Travelling Expenses Claim Bill</div>
+                </div>
+
+                <!-- Employee Info Table -->
+                <table style="width: 100%; border-collapse: collapse; border-bottom: 1px solid #000;">
+                    <tr>
+                        <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; width: 33%;">Employee Name: ${employeeName}</td>
+                        <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; width: 33%;">Reporting To: ${approverName}</td>
+                        <td style="border-bottom: 1px solid #000; padding: 4px; width: 33%;">Vehicle Type: -</td>
+                    </tr>
+                    <tr>
+                        <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px;">Designation: ${expense.employee?.designation || '-'}</td>
+                        <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px;">Claim month: ${claimMonth}</td>
+                        <td style="border-bottom: 1px solid #000; padding: 4px;">Fuel Type: -</td>
+                    </tr>
+                    <tr>
+                        <td style="border-right: 1px solid #000; padding: 4px;">Employee Code: ${employeeCode}</td>
+                        <td style="border-right: 1px solid #000; padding: 4px;">Employee Grade: -</td>
+                        <td style="padding: 4px;">State/Zone: -</td>
+                    </tr>
+                </table>
+
+                <!-- Travelling Expense Details Header -->
+                <div style="padding: 4px; font-weight: bold; border-bottom: 1px solid #000;">Travelling Expense Details:</div>
+
+                <!-- Expense Table -->
+                <table style="width: 100%; border-collapse: collapse; border-bottom: 1px solid #000;">
+                    <thead>
+                        <tr style="background-color: #f2f2f2;">
+                            <th style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; font-size: 10px;">Date</th>
+                            <th style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; font-size: 10px;">From</th>
+                            <th style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; font-size: 10px;">To</th>
+                            <th style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; font-size: 10px;">Purpose</th>
+                            <th style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; font-size: 10px;">Travel</th>
+                            <th style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; font-size: 10px;">Room</th>
+                            <th style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; font-size: 10px;">Food</th>
+                            <th style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; font-size: 10px;">Other</th>
+                            <th style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; font-size: 10px;">Total</th>
+                            <th style="border-bottom: 1px solid #000; padding: 4px; font-size: 10px;">Remarks</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; text-align: center;">${expense.fromDate ? formatedDate(expense.fromDate) : '-'}</td>
+                            <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px;">${expense.fromLocation || '-'}</td>
+                            <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px;">${expense.toLocation || '-'}</td>
+                            <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px;">${expense.businessPurpose || '-'}</td>
+                            <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; text-align: right;">${travelAmount || ''}</td>
+                            <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; text-align: right;">${roomAmount || ''}</td>
+                            <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; text-align: right;">${foodAmount || ''}</td>
+                            <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; text-align: right;">${otherAmount || ''}</td>
+                            <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; text-align: right;">${totalAmount}</td>
+                            <td style="border-bottom: 1px solid #000; padding: 4px;"></td>
+                        </tr>
+                        <tr>
+                            <td colspan="8" style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; text-align: right; font-weight: bold;">Total</td>
+                            <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; text-align: right; font-weight: bold;">${totalAmount}</td>
+                            <td style="border-bottom: 1px solid #000; padding: 4px;"></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <!-- Summary Section (Prices Right-Aligned) -->
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 4px; width: 50%;">Grand Total:</td>
+                        <td style="border-bottom: 1px solid #000; padding: 4px; width: 50%; text-align: right;">₹${totalAmount}</td>
+                    </tr>
+                    <tr>
+                        <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 4px;">Local Conveyance Expenses :</td>
+                        <td style="border-bottom: 1px solid #000; padding: 4px; text-align: right;">-</td>
+                    </tr>
+                    <tr>
+                        <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 4px;">Total Expenses Incurred:</td>
+                        <td style="border-bottom: 1px solid #000; padding: 4px; text-align: right;">₹${totalAmount}</td>
+                    </tr>
+                    <tr>
+                        <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 4px;">Spent by Company:</td>
+                        <td style="border-bottom: 1px solid #000; padding: 4px; text-align: right;">₹${companyPaidAmount}</td>
+                    </tr>
+                    <tr>
+                        <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 4px;">Balance to Receive:</td>
+                        <td style="border-bottom: 1px solid #000; padding: 4px; text-align: right;">₹${reimbursableAmount}</td>
+                    </tr>
+                    <tr>
+                        <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 4px;">Amount Approved:</td>
+                        <td style="border-bottom: 1px solid #000; padding: 4px; text-align: right;">₹${expense.status === 'APPROVED' ? totalAmount : 0}</td>
+                    </tr>
+                    <tr>
+                        <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 4px;">Approval Status:</td>
+                        <td style="border-bottom: 1px solid #000; padding: 4px;">${captalizeWords(expense.status)}</td>
+                    </tr>
+                    <tr>
+                        <td style="border-right: 1px solid #000; padding: 4px; height: 60px; vertical-align: top; font-weight: bold; width: 50%;">Employee Signature</td>
+                        <td style="padding: 4px; text-align: right; vertical-align: bottom;">Authorized Signature</td>
+                    </tr>
+                </table>
+            </div>
+        `;
+
+        // 2. Set PDF options
+        const opt = {
+            margin: 0.5,
+            filename: `Expense_Claim_${employeeName.replace(/\s+/g, '_')}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2 },
+            jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+        };
+
+        // 3. Generate and download PDF
+        const element = document.createElement('div');
+        element.innerHTML = htmlContent;
+        html2pdf().set(opt).from(element).save();
+    };
+
     return (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex justify-center items-stretch z-40 p-0 sm:p-4">
             <div
@@ -258,7 +405,6 @@ const ExpanseDetailModal = ({
                                 )}
                             </div>
                             <div className="text-right">
-                                {/* ✅ Reimbursable amount (self-paid only) */}
                                 <div className="text-3xl font-bold text-white">
                                     ₹{reimbursableAmount}
                                 </div>
@@ -280,7 +426,6 @@ const ExpanseDetailModal = ({
                             Trip Information
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Row 1: Trip Purpose | Travel Type */}
                             <div className="bg-white/5 border border-white/10 rounded-lg p-4">
                                 <p className="text-xs text-gray-400 mb-1">Trip Purpose</p>
                                 <p className="text-sm text-white">
@@ -294,7 +439,6 @@ const ExpanseDetailModal = ({
                                 </p>
                             </div>
 
-                            {/* Row 2: Trip Distance | Requested At */}
                             <div className="bg-white/5 border border-white/10 rounded-lg p-4 flex items-start gap-2">
                                 <Route className="w-4 h-4 text-[#4EA1FF] mt-0.5" />
                                 <div>
@@ -315,7 +459,6 @@ const ExpanseDetailModal = ({
                                 </p>
                             </div>
 
-                            {/* Row 3: From Location | To Location */}
                             <div className="bg-white/5 border border-white/10 rounded-lg p-4">
                                 <p className="text-xs text-gray-400 mb-1 flex items-center gap-1">
                                     <MapPin className="w-3 h-3" /> From Location
@@ -333,7 +476,6 @@ const ExpanseDetailModal = ({
                                 </p>
                             </div>
 
-                            {/* Row 4: From Date | To Date */}
                             <div className="bg-white/5 border border-white/10 rounded-lg p-4">
                                 <p className="text-xs text-gray-400 mb-1 flex items-center gap-1">
                                     <Calendar className="w-3 h-3" /> From Date
@@ -361,7 +503,6 @@ const ExpanseDetailModal = ({
 
                         {(expenseItems.length > 0 || miscItems.length > 0) ? (
                             <div className="space-y-2">
-                                {/* Regular expense items (travel, hotel, food) */}
                                 {expenseItems.map((item, index) => (
                                     <div
                                         key={`exp-${index}`}
@@ -388,7 +529,6 @@ const ExpanseDetailModal = ({
                                     </div>
                                 ))}
 
-                                {/* ✅ Misc items (from miscItems array) */}
                                 {miscItems.map((item, index) => (
                                     <div
                                         key={`misc-${index}`}
@@ -429,7 +569,6 @@ const ExpanseDetailModal = ({
                                 Payment Summary
                             </h4>
                             <div className="space-y-2">
-                                {/* Total Amount */}
                                 <div className="flex justify-between items-center bg-white/5 border border-white/10 rounded-lg px-4 py-3">
                                     <span className="text-sm font-semibold text-white">
                                         Total Amount
@@ -439,7 +578,6 @@ const ExpanseDetailModal = ({
                                     </span>
                                 </div>
 
-                                {/* Company Paid */}
                                 <div className="flex justify-between items-center bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-3">
                                     <span className="text-sm font-semibold text-yellow-200">
                                         Company Paid (−)
@@ -449,7 +587,6 @@ const ExpanseDetailModal = ({
                                     </span>
                                 </div>
 
-                                {/* ✅ Reimbursable Amount */}
                                 <div className="flex justify-between items-center bg-[#4EA1FF]/10 border border-[#4EA1FF]/30 rounded-lg px-4 py-3">
                                     <span className="text-sm font-semibold text-[#4EA1FF]">
                                         Reimbursable Amount
@@ -497,19 +634,17 @@ const ExpanseDetailModal = ({
                                 View Attachment
                             </button>
                         )}
-                        {onDownloadPDF && (
-                            <button
-                                onClick={() => onDownloadPDF(expense)}
-                                className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg hover:bg-emerald-500/30 transition-colors cursor-pointer text-sm"
-                            >
-                                <FileText size={16} />
-                                Download PDF
-                            </button>
-                        )}
+                        
+                        <button
+                            onClick={handleDownloadPDF}
+                            className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg hover:bg-emerald-500/30 transition-colors cursor-pointer text-sm"
+                        >
+                            <FileText size={16} />
+                            Download PDF
+                        </button>
                     </div>
 
                     <div className="flex items-center gap-3">
-                        {/* Approve — closes modal after success */}
                         <button
                             onClick={handleApproveClick}
                             disabled={!isPending}
@@ -522,7 +657,6 @@ const ExpanseDetailModal = ({
                             {isPending ? 'Approve' : 'Approved'}
                         </button>
 
-                        {/* Reject — closes modal after success */}
                         <button
                             onClick={handleRejectClick}
                             disabled={!isPending}

@@ -3,8 +3,6 @@ import { formatedDate } from "../../../utils/formateddateAndTime";
 import { FaRegEdit } from "react-icons/fa";
 import { Eye, UserCheck, UserX } from "lucide-react";
 
-const Role = localStorage.getItem('Role');
-
 // Status Badge Component
 const StatusBadge = ({ isActive }) => {
   return (
@@ -88,22 +86,18 @@ export const getEmployeesListColumns = ({ handleSelectedEmp }) => [
     header: "Status",
     render: (row) => <StatusBadge isActive={row.isActive ?? true} />,
   },
-  ...(Role !== 'MANAGER'
-    ? [
-        {
-          header: "Action",
-          render: (row) => (
-            <button
-              className="group flex items-center justify-center w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 transition-all duration-200 hover:scale-110"
-              onClick={() => {
-                handleSelectedEmp(row);
-              }}
-              title="Edit Employee"
-            >
-              <FaRegEdit size={16} className="text-white/40 group-hover:text-white/80 transition-colors" />
-            </button>
-          ),
-        },
-      ]
-    : []),
+  {
+    header: "Action",
+    render: (row) => (
+      <button
+        className="group flex items-center justify-center w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 transition-all duration-200 hover:scale-110"
+        onClick={() => {
+          handleSelectedEmp(row);
+        }}
+        title="Edit Employee"
+      >
+        <FaRegEdit size={16} className="text-white/40 group-hover:text-white/80 transition-colors" />
+      </button>
+    ),
+  },
 ];

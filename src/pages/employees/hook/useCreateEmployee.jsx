@@ -10,6 +10,29 @@ export const useCreateEmployee = (close, selectedEmp) => {
     (state) => state.createEmployee
   );
 
+  // ---- Logged-in user info from localStorage (read once) ----
+  const [{
+    role: loggedInUserRole,
+    userId: loggedInUserId,
+    userName: loggedInUserName,
+  }] = useState(() => ({
+    role: localStorage.getItem("Role") || "",
+    userId: localStorage.getItem("userId") || "",
+    userName: localStorage.getItem("userName") || "",
+  }));
+
+  const isLoggedInEmployeeOrManager =
+    loggedInUserRole === "EMPLOYEE" || loggedInUserRole === "MANAGER";
+
+  // 👇 Track whether the RM list (from backend) was empty.
+  //    We only force the RM to be the logged-in user when the list has NO employees.
+  const [isRmListEmpty, setIsRmListEmpty] = useState(false);
+
+  // 👇 For EMPLOYEE / MANAGER, lock the Reporting Manager to the logged-in user
+  //    ONLY when the backend RM list is empty. If the list has employees,
+  //    keep the currently selected value and let the user choose.
+  const isReportingManagerLocked = isLoggedInEmployeeOrManager && isRmListEmpty;
+
   // Form State
   const [officeList, setOfficeList] = useState([]);
   const [office, setOffice] = useState('');
@@ -20,7 +43,10 @@ export const useCreateEmployee = (close, selectedEmp) => {
   const [departmentList, setDepartmentList] = useState([]);
   const [department, setDepartment] = useState('');
   const [rmList, setRmList] = useState([]);
-  const [rm, setRm] = useState('');
+  // 👇 default RM = logged-in user when role is EMPLOYEE / MANAGER and list is empty
+  const [rm, setRm] = useState(
+    isReportingManagerLocked ? loggedInUserId : ''
+  );
   const [empId, setEmpId] = useState('');
   const [empName, setEmpName] = useState('');
   const [designationList, setDesignationList] = useState([]);
@@ -48,26 +74,33 @@ export const useCreateEmployee = (close, selectedEmp) => {
   // ---- Populate form when editing ----
   useEffect(() => {
     if (selectedEmp) {
-      console.log("📝 Editing employee:", selectedEmp);
-      console.log("📝 Designation ID from employee:", selectedEmp.designationId);
-      console.log("📝 Designation Name from employee:", selectedEmp.designation);
+      // console.log("📝 Editing employee:", selectedEmp);
+      // console.log("📝 Designation ID from employee:", selectedEmp.designationId);
+      // console.log("📝 Designation Name from employee:", selectedEmp.designation);
+      // console.log("selectedEmp?.reportingTo?._id ============>", selectedEmp?.reportingTo?._id);
+      // console.log("🔐 Logged-in role:", loggedInUserRole, "| userId:", loggedInUserId, "| userName:", loggedInUserName);
 
       // Basic Info
       setOffice(selectedEmp?.office || '');
       setSelectedShift(selectedEmp?.shiftPolicy || '');
       setSelectedWeekOff(selectedEmp?.weeklyOffPolicy || '');
       setDepartment(selectedEmp?.departmentId || '');
-      setRm(selectedEmp?.reportingTo?._id || '');
+      // 👇 If locked (EMPLOYEE/MANAGER + empty list) → logged-in user, otherwise keep reportingTo
+      setRm(
+        isReportingManagerLocked
+          ? loggedInUserId
+          : (selectedEmp?.reportingTo?._id || '')
+      );
       setEmpId(selectedEmp?.employeeCode || '');
       setEmpEmail(selectedEmp?.email || '');
 
       // FIX: Set designation with proper fallback
       const designationId = selectedEmp?.designationId ||
-                           selectedEmp?.designation?._id ||
-                           selectedEmp?.designation_id ||
-                           '';
+        selectedEmp?.designation?._id ||
+        selectedEmp?.designation_id ||
+        '';
       setEmpDesignation(designationId);
-      console.log("📝 Set designation to:", designationId);
+      // console.log("📝 Set designation to:", designationId);
 
       setEmpName(selectedEmp?.fullName || '');
       setJoiningDate(selectedEmp?.joiningDate?.split("T")[0] || '');
@@ -84,23 +117,23 @@ export const useCreateEmployee = (close, selectedEmp) => {
 
       // FIX: Fetch designations for the department and then set the designation
       if (selectedEmp?.departmentId) {
-        console.log("📝 Fetching designations for department:", selectedEmp.departmentId);
+        // console.log("📝 Fetching designations for department:", selectedEmp.departmentId);
         setIsLoadingDesignations(true);
         fetchDesignationList(selectedEmp.departmentId).then((designations) => {
-          console.log("📝 Fetched designations:", designations);
+          // console.log("📝 Fetched designations:", designations);
           if (designationId) {
             const exists = designations.some(d => d._id === designationId);
             if (exists) {
               setEmpDesignation(designationId);
-              console.log("📝 Designation found and set:", designationId);
+              // console.log("📝 Designation found and set:", designationId);
             } else {
               const byTitle = designations.find(d => d.title === selectedEmp?.designation);
               if (byTitle) {
                 setEmpDesignation(byTitle._id);
-                console.log("📝 Designation found by title:", byTitle._id);
+                // console.log("📝 Designation found by title:", byTitle._id);
               } else if (designations.length > 0) {
                 setEmpDesignation(designations[0]._id);
-                console.log("📝 Fallback to first designation:", designations[0]._id);
+                // console.log("📝 Fallback to first designation:", designations[0]._id);
               }
             }
           }
@@ -117,7 +150,8 @@ export const useCreateEmployee = (close, selectedEmp) => {
       setSelectedShift('');
       setSelectedWeekOff('');
       setDepartment('');
-      setRm('');
+      // 👇 If locked → logged-in user, otherwise reset to empty
+      setRm(isReportingManagerLocked ? loggedInUserId : '');
       setEmpId('');
       setEmpEmail('');
       setEmpDesignation('');
@@ -132,6 +166,13 @@ export const useCreateEmployee = (close, selectedEmp) => {
       setBrandName('');
     }
   }, [selectedEmp]);
+
+  // 👇 Keep RM forced to the logged-in user whenever the field becomes locked
+  useEffect(() => {
+    if (isReportingManagerLocked) {
+      setRm(loggedInUserId);
+    }
+  }, [isReportingManagerLocked, loggedInUserId]);
 
   // ---- Success/Error handling ----
   useEffect(() => {
@@ -183,7 +224,7 @@ export const useCreateEmployee = (close, selectedEmp) => {
     try {
       const response = await getRequest('/department');
       if (response.success) {
-        console.log("📋 Department list:", response.data.data);
+        // console.log("📋 Department list:", response.data.data);
         setDepartmentList(response.data.data);
         return response.data.data;
       }
@@ -237,7 +278,7 @@ export const useCreateEmployee = (close, selectedEmp) => {
     }
 
     try {
-      console.log("📋 Fetching designations for department:", departmentId);
+      // console.log("📋 Fetching designations for department:", departmentId);
       const response = await getRequest(`/designation?departmentId=${departmentId}`);
       console.log("📋 Designation response:", response);
 
@@ -279,7 +320,7 @@ export const useCreateEmployee = (close, selectedEmp) => {
         department: departmentId,
       });
 
-      console.log("📋 Create designation response:", response);
+      // console.log("📋 Create designation response:", response);
 
       if (response.success) {
         alert('Designation created successfully!');
@@ -304,15 +345,32 @@ export const useCreateEmployee = (close, selectedEmp) => {
     }
   };
 
-  // ------------ Fetch Reporting Manager ----------
+  // ------------ Fetch Reporting Manager ------------
   // Always called WITHOUT department → sends `/employee?departmentId` (key only, no value)
+  // 👇 Records whether the backend list was empty (BEFORE injecting self) so we
+  //    only force RM = logged-in user when there are NO other employees.
   const fetchRMList = async () => {
     try {
-      const url = `/employee?departmentId`; // 👈 key only, no value → backend skips department filter but key exists
+      const url = `/employee?departmentId`; //  key only, no value → backend skips department filter but key exists
 
       const response = await getRequest(url);
       if (response.success) {
-        setRmList(response.data.data);
+        const backendList = response.data.data || [];
+
+        // 👇 Record emptiness BEFORE injecting the logged-in user into the list
+        setIsRmListEmpty(backendList.length === 0);
+
+        let list = backendList;
+
+        // Inject the logged-in user if not already present
+        if (loggedInUserId && loggedInUserName) {
+          const exists = list.some(emp => emp._id === loggedInUserId);
+          if (!exists) {
+            list = [{ _id: loggedInUserId, fullName: loggedInUserName }, ...list];
+          }
+        }
+
+        setRmList(list);
       }
     } catch (err) {
       console.error('Error fetching RM list:', err);
@@ -351,13 +409,17 @@ export const useCreateEmployee = (close, selectedEmp) => {
       return;
     }
 
+    //  When locked (EMPLOYEE/MANAGER + empty list) → logged-in user,
+    //    otherwise keep the selected value (reportingTo / user's pick).
+    const reportingToValue = isReportingManagerLocked ? loggedInUserId : rm;
+
     const payload = {
       employeeCode: empId.toUpperCase().trim(),
       fullName: empName.trim(),
       email: empEmail.trim(),
       designation: empDesignation,
       department: department,
-      reportingTo: rm || undefined,
+      reportingTo: reportingToValue || undefined,
       office: office,
       shiftPolicy: selectedShift,
       weeklyOffPolicy: selectedWeekOff,
@@ -379,13 +441,15 @@ export const useCreateEmployee = (close, selectedEmp) => {
         }
       })
     };
+    // console.log("🟡 reportingTo BEFORE cleanup:", payload?.reportingTo);
 
     Object.keys(payload).forEach(key => {
+
       if (payload[key] === undefined || payload[key] === '') {
         delete payload[key];
       }
     });
-
+    // --------------------------------------payload--------------------------------
     console.log("📦 Payload being sent:", payload);
     dispatch(createNewEmployee({ selectedEmp, payload }));
   };
@@ -409,6 +473,14 @@ export const useCreateEmployee = (close, selectedEmp) => {
     brandName, setBrandName,
     isActive, setIsActive,
     isLoadingDesignations,
+
+    //  expose so the UI can disable/lock the Reporting Manager field
+    isReportingManagerLocked,
+    isLoggedInEmployeeOrManager,
+    isRmListEmpty,
+    loggedInUserRole,
+    loggedInUserId,
+    loggedInUserName,
 
     showAddDeptModal, setShowAddDeptModal,
     newDeptName, setNewDeptName,

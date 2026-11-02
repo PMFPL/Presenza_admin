@@ -6,19 +6,19 @@ import CreateNewEmployee from './CreateNewEmployee';
 import GettingError from '../../../components/common/GettingError';
 
 function EmployeeList() {
-  const { 
-    searchEmpId, setSearchEmpId, 
+  const {
+    searchEmpId, setSearchEmpId,
     departmentFilter, setDepartmentFilter,
     statusFilter, setStatusFilter,
     statusOptions,
-    loading, error, 
-    departments, filteredEmpList, 
-    handleAddEmployee, closeEmployeeModal,
-    isEmployeeModalOpen, columns, selectedEmp 
+    loading, error,
+    departments, filteredEmpList,
+    handleAddEmployee, closeEmployeeModal, 
+    isEmployeeModalOpen, columns, selectedEmp
   } = useEmployeeList();
 
   const Role = localStorage.getItem('Role');
-  const isManager = Role === 'MANAGER';
+  const isManager = Role === 'MANAGER' || Role === 'EMPLOYEE';
 
   // Summary stats
   const total = filteredEmpList.length;
@@ -29,7 +29,7 @@ function EmployeeList() {
     <>
       {/* Loading state */}
       {loading && <Loading message="Fetching Employee List..." />}
-      
+
       {/* Error state */}
       {error ? (
         <GettingError error={error} />
@@ -53,7 +53,7 @@ function EmployeeList() {
               <div>
                 <p className="text-white/40 text-xs font-medium uppercase tracking-wider">Active</p>
                 <p className="text-white/90 text-2xl font-semibold">{active}</p>
-                <p className="text-white/30 text-xs">{total > 0 ? Math.round((active/total)*100) : 0}%</p>
+                <p className="text-white/30 text-xs">{total > 0 ? Math.round((active / total) * 100) : 0}%</p>
               </div>
             </div>
             <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm border border-white/20 rounded-xl p-4 flex items-center gap-4">
@@ -63,7 +63,7 @@ function EmployeeList() {
               <div>
                 <p className="text-white/40 text-xs font-medium uppercase tracking-wider">Inactive</p>
                 <p className="text-white/90 text-2xl font-semibold">{inactive}</p>
-                <p className="text-white/30 text-xs">{total > 0 ? Math.round((inactive/total)*100) : 0}%</p>
+                <p className="text-white/30 text-xs">{total > 0 ? Math.round((inactive / total) * 100) : 0}%</p>
               </div>
             </div>
           </div>
@@ -119,7 +119,7 @@ function EmployeeList() {
                     {filteredEmpList.length} records
                   </span>
 
-                  {!isManager && (
+                  {/* {isManager && (
                     <button
                       onClick={handleAddEmployee}
                       className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#ff6b35] to-[#e55a2a] hover:from-[#e55a2a] hover:to-[#cc4a1a] text-white rounded-xl transition-all duration-200 shadow-lg shadow-orange-500/20 hover:shadow-orange-500/40"
@@ -127,11 +127,21 @@ function EmployeeList() {
                       <Plus size={18} />
                       <span>Add New</span>
                     </button>
-                  )}
+                  )} */}
+
+                  <button
+                    onClick={handleAddEmployee}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#ff6b35] to-[#e55a2a] hover:from-[#e55a2a] hover:to-[#cc4a1a] text-white rounded-xl transition-all duration-200 shadow-lg shadow-orange-500/20 hover:shadow-orange-500/40"
+                  >
+                    <Plus size={18} />
+                    <span>Add New</span>
+                  </button>
+
+
                 </div>
               </div>
             </div>
-            
+
             {/* Table */}
             <div className="p-0">
               <Table
@@ -146,9 +156,9 @@ function EmployeeList() {
 
       {/* Create/Edit Employee Modal */}
       {isEmployeeModalOpen && (
-        <CreateNewEmployee 
-          selectedEmp={selectedEmp} 
-          close={closeEmployeeModal} 
+        <CreateNewEmployee
+          selectedEmp={selectedEmp}
+          close={closeEmployeeModal}
         />
       )}
     </>

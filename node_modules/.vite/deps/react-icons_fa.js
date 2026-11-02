@@ -1,4 +1,4 @@
-import { t as GenIcon } from "./iconBase-B3kQqHRc.js";
+import { t as GenIcon } from "./iconBase-DOARVRF3.js";
 //#region node_modules/react-icons/fa/index.mjs
 function FaZhihu(props) {
 	return GenIcon({

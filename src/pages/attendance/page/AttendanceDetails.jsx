@@ -65,7 +65,7 @@ function AttendenceDetails({ sessions = [], empCode, employeeData, close }) {
     setSelectedImage('');
   };
 
-  // ---- Customize columns to add icon before location addresses (with less gap) ----
+  // ---- Customize columns to add icon before location addresses (with 2-line limit and hover) ----
   const baseColumns = useMemo(() => getAttendanceDetailsColumn({ showImage }), []);
   const columns = useMemo(() => {
     return baseColumns.map((col) => {
@@ -80,10 +80,28 @@ function AttendenceDetails({ sessions = [], empCode, employeeData, close }) {
                 : row.original[col.accessor];
             }
             return (
-              <span className="flex items-center justify-center gap-1 w-full">
-                <MapPin size={12} className="text-blue-400 flex-shrink-0" />
-                <span className="break-words text-white/80">{location || '—'}</span>
-              </span>
+              <div 
+                className="flex items-start justify-center gap-1.5 w-full cursor-help px-1"
+                title={String(location || '—')}
+              >
+                <MapPin size={14} className="text-blue-400 flex-shrink-0 mt-0.5" />
+                {/* Inline styles guarantee the 2-line clamp works regardless of Tailwind setup */}
+                <div 
+                  className="min-w-0 text-left text-xs text-white/80 leading-relaxed"
+                  style={{
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word',
+                    maxWidth: '100%'
+                  }}
+                >
+                  {location || '—'}
+                </div>
+              </div>
             );
           }
         };
@@ -93,7 +111,52 @@ function AttendenceDetails({ sessions = [], empCode, employeeData, close }) {
   }, [baseColumns]);
 
   const breakColumns = useMemo(() => getAttendanceSessionBreakColumn(), []);
-  const visitColumns = useMemo(() => getAttendanceSessionVisitColumn({ showImage }), []);
+  
+  // ---- Customize visits columns to allow multi-line wrapping and hover tooltips ----
+  const visitColumns = useMemo(() => {
+    const baseVisitColumns = getAttendanceSessionVisitColumn({ showImage });
+    // Columns that need multi-line wrapping and hover tooltips
+    const textColumns = ['Purpose', 'In Location', 'Out Location', 'Customer', 'Remarks'];
+
+    return baseVisitColumns.map((col) => {
+      if (textColumns.includes(col.Header)) {
+        const originalCell = col.Cell;
+        return {
+          ...col,
+          Cell: (props) => {
+            let textValue = '';
+            if (col.accessor) {
+              textValue = typeof col.accessor === 'function'
+                ? col.accessor(props.row.original)
+                : props.row.original[col.accessor];
+            }
+
+            const content = originalCell ? originalCell(props) : (textValue || '—');
+
+            return (
+              <div
+                className="text-left text-xs cursor-help mx-auto"
+                title={String(textValue || '—')}
+                style={{
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
+                  maxWidth: '150px' // Prevents this column from expanding infinitely
+                }}
+              >
+                {content}
+              </div>
+            );
+          }
+        };
+      }
+      return col;
+    });
+  }, []);
 
   // Attendance summary
   const attendanceSummary = useMemo(() => {
@@ -142,7 +205,7 @@ function AttendenceDetails({ sessions = [], empCode, employeeData, close }) {
 
   return (
     <>
-      {/* ===== STYLES TO CENTER LOCATIONS AND PREVENT OVERLAP ===== */}
+      {/* ===== STYLES TO PREVENT OVERLAP AND HANDLE MULTI-LINE TEXT ===== */}
       <style>{`
         /* --- Session detail table --- */
         .session-table-wrapper {
@@ -155,10 +218,11 @@ function AttendenceDetails({ sessions = [], empCode, employeeData, close }) {
         }
         .session-table-wrapper td,
         .session-table-wrapper th {
-          word-break: break-word;
-          overflow-wrap: break-word;
+          word-break: break-word !important;
+          overflow-wrap: break-word !important;
+          white-space: normal !important;
           padding: 8px 6px;
-          vertical-align: middle;
+          vertical-align: top;
           font-size: 13px;
         }
         
@@ -169,10 +233,7 @@ function AttendenceDetails({ sessions = [], empCode, employeeData, close }) {
         .session-table-wrapper td:nth-child(2),
         .session-table-wrapper th:nth-child(2) { 
           width: 30%; 
-          white-space: normal !important; 
-          word-break: break-word !important;
           text-align: center !important;
-          vertical-align: middle !important;
         }  /* In Location – centered */
         
         .session-table-wrapper td:nth-child(3),
@@ -184,10 +245,7 @@ function AttendenceDetails({ sessions = [], empCode, employeeData, close }) {
         .session-table-wrapper td:nth-child(5),
         .session-table-wrapper th:nth-child(5) { 
           width: 30%; 
-          white-space: normal !important; 
-          word-break: break-word !important;
           text-align: center !important;
-          vertical-align: middle !important;
         }  /* Out Location – centered */
         
         .session-table-wrapper td:nth-child(6),
@@ -211,19 +269,24 @@ function AttendenceDetails({ sessions = [], empCode, employeeData, close }) {
           overflow-x: auto;
         }
         .break-visit-wrapper table {
-          table-layout: fixed;
+          table-layout: fixed; /* Enforce fixed layout to prevent horizontal scroll */
           width: 100%;
+          border-collapse: collapse;
         }
         .break-visit-wrapper td,
         .break-visit-wrapper th {
-          word-break: break-word;
-          padding: 4px 3px;
+          white-space: normal !important; /* Force wrapping */
+          word-break: break-word !important;
+          overflow-wrap: break-word !important;
+          padding: 8px 6px;
           font-size: 12px;
+          vertical-align: top; 
         }
         .break-visit-wrapper img {
-          max-width: 60px !important;
-          max-height: 60px !important;
+          max-width: 50px !important;
+          max-height: 50px !important;
           object-fit: contain;
+          margin: 0 auto;
         }
       `}</style>
 
@@ -396,7 +459,7 @@ function AttendenceDetails({ sessions = [], empCode, employeeData, close }) {
                       </div>
                     </div>
 
-                    {/* Session Table with custom columns (locations with icon, less gap) */}
+                    {/* Session Table */}
                     <div className="p-4 session-table-wrapper">
                       <Table columns={columns} data={[session]} />
                     </div>
