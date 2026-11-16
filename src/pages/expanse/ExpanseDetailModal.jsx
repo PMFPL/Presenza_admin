@@ -46,38 +46,64 @@ const ExpanseDetailModal = ({
         return sum;
     })();
 
+    // ✅ Compute SELF-paid sum directly from items
+    const computedSelfPaid = (() => {
+        let sum = 0;
+        if (expense.expenses && typeof expense.expenses === 'object') {
+            Object.values(expense.expenses).forEach((e) => {
+                if ((e?.paymentMethod || '').toUpperCase() === 'SELF') {
+                    sum += Number(e?.amount) || 0;
+                }
+            });
+        }
+        if (Array.isArray(expense.miscItems)) {
+            expense.miscItems.forEach((m) => {
+                if ((m?.paymentMethod || '').toUpperCase() === 'SELF') {
+                    sum += Number(m?.amount) || 0;
+                }
+            });
+        }
+        return sum;
+    })();
+
+    // ✅ Compute COMPANY-paid sum directly from items
+    const computedCompanyPaid = (() => {
+        let sum = 0;
+        if (expense.expenses && typeof expense.expenses === 'object') {
+            Object.values(expense.expenses).forEach((e) => {
+                if ((e?.paymentMethod || '').toUpperCase() === 'COMPANY') {
+                    sum += Number(e?.amount) || 0;
+                }
+            });
+        }
+        if (Array.isArray(expense.miscItems)) {
+            expense.miscItems.forEach((m) => {
+                if ((m?.paymentMethod || '').toUpperCase() === 'COMPANY') {
+                    sum += Number(m?.amount) || 0;
+                }
+            });
+        }
+        return sum;
+    })();
+
     const totalAmount =
-        typeof expense.totalAmount === 'number' ? expense.totalAmount : computedTotal;
+        typeof expense.totalAmount === 'number' && expense.totalAmount > 0
+            ? expense.totalAmount
+            : computedTotal;
 
     const companyPaidAmount =
-        typeof expense.companyPaidAmount === 'number'
+        typeof expense.companyPaidAmount === 'number' && expense.companyPaidAmount > 0
             ? expense.companyPaidAmount
-            : (() => {
-                let sum = 0;
-                if (expense.expenses && typeof expense.expenses === 'object') {
-                    Object.values(expense.expenses).forEach((e) => {
-                        if ((e?.paymentMethod || '').toUpperCase() === 'COMPANY') {
-                            sum += Number(e?.amount) || 0;
-                        }
-                    });
-                }
-                if (Array.isArray(expense.miscItems)) {
-                    expense.miscItems.forEach((m) => {
-                        if ((m?.paymentMethod || '').toUpperCase() === 'COMPANY') {
-                            sum += Number(m?.amount) || 0;
-                        }
-                    });
-                }
-                return sum;
-            })();
+            : computedCompanyPaid;
 
-    // ✅ Reimbursable = total − company-paid (what employee should get back)
     const reimbursableAmount =
-        typeof expense.selfPaidAmount === 'number'
+        typeof expense.selfPaidAmount === 'number' && expense.selfPaidAmount > 0
             ? expense.selfPaidAmount
-            : totalAmount - companyPaidAmount;
+            : computedSelfPaid > 0
+                ? computedSelfPaid
+                : totalAmount - companyPaidAmount;
 
-    // -------- Expense items (expenses object) --------
+    // -------- Expense items --------
     const getExpenseItems = () => {
         if (!expense.expenses || typeof expense.expenses !== 'object') return [];
         return Object.entries(expense.expenses).map(([key, value]) => ({
@@ -87,7 +113,7 @@ const ExpanseDetailModal = ({
         }));
     };
 
-    // -------- Misc items (array) --------
+    // -------- Misc items --------
     const getMiscItems = () => {
         if (!Array.isArray(expense.miscItems)) return [];
         return expense.miscItems
@@ -141,20 +167,52 @@ const ExpanseDetailModal = ({
         return expense.employee.departmentName || expense.employee.dept || '';
     };
 
-    const getApproverName = () => {
-        if (expense.approvedBy) {
-            if (typeof expense.approvedBy === 'object') {
-                return (
-                    expense.approvedBy.fullName ||
-                    expense.approvedBy.name ||
-                    expense.approvedBy.email ||
-                    'Not Assigned'
-                );
-            }
-            return expense.approvedBy;
+    // ✅ Pull a display name out of any actor value
+    const extractActorName = (actor) => {
+        if (!actor) return null;
+        if (typeof actor === 'string') {
+            if (/^[a-f0-9]{24}$/i.test(actor)) return null;
+            return actor.trim() || null;
         }
-        if (expense.status === 'PENDING') return 'Pending Approval';
-        return 'Not Assigned';
+        if (typeof actor === 'object') {
+            return (
+                actor.fullName ||
+                actor.name ||
+                actor.email ||
+                actor.user?.fullName ||
+                actor.user?.name ||
+                actor.user?.email ||
+                actor.employee?.fullName ||
+                actor.employee?.name ||
+                actor.employee?.email ||
+                null
+            );
+        }
+        return null;
+    };
+
+    // ✅ Status-aware approver resolution
+    const getApproverName = () => {
+        const status = (expense.status || '').toUpperCase();
+
+        if (status === 'REJECTED') {
+            return (
+                extractActorName(expense.rejectedBy) ||
+                extractActorName(expense.rejectedByUser) ||
+                extractActorName(expense.approvedBy) ||
+                'Not Assigned'
+            );
+        }
+
+        if (status !== 'PENDING') {
+            return (
+                extractActorName(expense.approvedBy) ||
+                extractActorName(expense.approvedByUser) ||
+                'Not Assigned'
+            );
+        }
+
+        return 'Pending Approval';
     };
 
     const getStatusColor = (status) => {
@@ -187,7 +245,7 @@ const ExpanseDetailModal = ({
     const approverName = getApproverName();
     const isPending = expense.status === 'PENDING';
 
-    // ✅ Handlers that run action and then close the modal
+    // ✅ Handlers
     const handleApproveClick = async () => {
         try {
             await onApprove?.(expense._id);
@@ -206,11 +264,10 @@ const ExpanseDetailModal = ({
         }
     };
 
-    // ✅ Handle PDF Download matching the screenshot format
+    // ✅ Handle PDF Download (Full inline HTML version)
     const handleDownloadPDF = () => {
-        // Aggregate the amounts into categories for the table
         let travelAmount = 0, roomAmount = 0, foodAmount = 0, otherAmount = 0;
-        
+
         expenseItems.forEach(item => {
             const type = item.type.toLowerCase();
             if (type.includes('travel')) travelAmount += item.amount;
@@ -218,23 +275,23 @@ const ExpanseDetailModal = ({
             else if (type.includes('food')) foodAmount += item.amount;
             else otherAmount += item.amount;
         });
-        
+
         miscItems.forEach(item => {
             otherAmount += item.amount;
         });
 
-        const claimMonth = expense.createdAt 
-            ? new Date(expense.createdAt).toLocaleString('default', { month: 'long', year: 'numeric' }) 
+        const claimMonth = expense.createdAt
+            ? new Date(expense.createdAt).toLocaleString('default', { month: 'long', year: 'numeric' })
             : '-';
 
         // 1. Create the HTML string that mimics the screenshot
         const htmlContent = `
             <div style="font-family: Arial, sans-serif; font-size: 11px; max-width: 800px; margin: 0 auto; border: 1px solid #000; background: #fff; color: #000;">
-                <!-- Top Yellow Header (Centered) -->
+                <!-- Top Yellow Header -->
                 <div style="background-color: #FFD700; padding: 4px 8px; font-weight: bold; border-bottom: 1px solid #000; font-size: 12px; text-align: center;">
                     Paul Merchants
                 </div>
-                
+
                 <!-- Main Title -->
                 <div style="text-align: center; border-bottom: 1px solid #000; padding: 8px 0;">
                     <div style="font-size: 16px; font-weight: bold; margin-bottom: 4px;">PAUL MERCHANTS FINANCE PRIVATE LIMITED</div>
@@ -246,16 +303,16 @@ const ExpanseDetailModal = ({
                     <tr>
                         <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; width: 33%;">Employee Name: ${employeeName}</td>
                         <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; width: 33%;">Reporting To: ${approverName}</td>
-                        <td style="border-bottom: 1px solid #000; padding: 4px; width: 33%;">Vehicle Type: -</td>
+                        <td style="border-bottom: 1px solid #000; padding: 4px; width: 33%;">Vehicle Type: ${captalizeWords(expense.travelType) || '-'}</td>
                     </tr>
                     <tr>
-                        <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px;">Designation: ${expense.employee?.designation || '-'}</td>
+                        <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px;">Department: ${expense.employee?.departmentName || expense.employee?.department?.name || expense.employee?.department?.departmentName || '-'}</td>
                         <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px;">Claim month: ${claimMonth}</td>
                         <td style="border-bottom: 1px solid #000; padding: 4px;">Fuel Type: -</td>
                     </tr>
                     <tr>
                         <td style="border-right: 1px solid #000; padding: 4px;">Employee Code: ${employeeCode}</td>
-                        <td style="border-right: 1px solid #000; padding: 4px;">Employee Grade: -</td>
+                        <td style="border-right: 1px solid #000; padding: 4px;">Employee Grade: ${expense.grade || '-'}</td>
                         <td style="padding: 4px;">State/Zone: -</td>
                     </tr>
                 </table>
@@ -284,13 +341,15 @@ const ExpanseDetailModal = ({
                             <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; text-align: center;">${expense.fromDate ? formatedDate(expense.fromDate) : '-'}</td>
                             <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px;">${expense.fromLocation || '-'}</td>
                             <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px;">${expense.toLocation || '-'}</td>
-                            <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px;">${expense.businessPurpose || '-'}</td>
+                            <!-- ✅ FIXED: Purpose now falls back to expense.purpose if businessPurpose is missing -->
+                            <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px;">${expense.businessPurpose || expense.purpose || '-'}</td>
                             <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; text-align: right;">${travelAmount || ''}</td>
                             <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; text-align: right;">${roomAmount || ''}</td>
                             <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; text-align: right;">${foodAmount || ''}</td>
                             <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; text-align: right;">${otherAmount || ''}</td>
                             <td style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; text-align: right;">${totalAmount}</td>
-                            <td style="border-bottom: 1px solid #000; padding: 4px;"></td>
+                            <!-- ✅ FIXED: Remarks now shown in table -->
+                            <td style="border-bottom: 1px solid #000; padding: 4px;">${expense.remarks || '-'}</td>
                         </tr>
                         <tr>
                             <td colspan="8" style="border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 4px; text-align: right; font-weight: bold;">Total</td>
@@ -300,7 +359,13 @@ const ExpanseDetailModal = ({
                     </tbody>
                 </table>
 
-                <!-- Summary Section (Prices Right-Aligned) -->
+                <!-- ✅ ADDED: Dedicated Remarks Section below the table for better visibility -->
+                <div style="padding: 4px; font-weight: bold; border-bottom: 1px solid #000; background-color: #f2f2f2;">Remarks:</div>
+                <div style="padding: 4px; border-bottom: 1px solid #000; min-height: 20px;">
+                    ${expense.remarks || 'No remarks provided.'}
+                </div>
+
+                <!-- Summary Section -->
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
                         <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 4px; width: 50%;">Grand Total:</td>
@@ -338,7 +403,6 @@ const ExpanseDetailModal = ({
             </div>
         `;
 
-        // 2. Set PDF options
         const opt = {
             margin: 0.5,
             filename: `Expense_Claim_${employeeName.replace(/\s+/g, '_')}.pdf`,
@@ -347,7 +411,6 @@ const ExpanseDetailModal = ({
             jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
         };
 
-        // 3. Generate and download PDF
         const element = document.createElement('div');
         element.innerHTML = htmlContent;
         html2pdf().set(opt).from(element).save();
@@ -429,7 +492,7 @@ const ExpanseDetailModal = ({
                             <div className="bg-white/5 border border-white/10 rounded-lg p-4">
                                 <p className="text-xs text-gray-400 mb-1">Trip Purpose</p>
                                 <p className="text-sm text-white">
-                                    {captalizeWords(expense.businessPurpose) || '-'}
+                                    {captalizeWords(expense.purpose || expense.businessPurpose) || '-'}
                                 </p>
                             </div>
                             <div className="bg-white/5 border border-white/10 rounded-lg p-4">
@@ -492,6 +555,18 @@ const ExpanseDetailModal = ({
                                     {expense.toDate ? formatedDate(expense.toDate) : '-'}
                                 </p>
                             </div>
+                        </div>
+                    </div>
+
+                    {/* ✅ Remarks Section on UI */}
+                    <div>
+                        <h4 className="text-sm font-semibold text-white/80 mb-3">
+                            Remarks
+                        </h4>
+                        <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+                            <p className="text-sm text-white">
+                                {expense.remarks || 'No remarks provided.'}
+                            </p>
                         </div>
                     </div>
 
@@ -562,7 +637,7 @@ const ExpanseDetailModal = ({
                         )}
                     </div>
 
-                    {/* ---------- Payment Summary (SEPARATE SECTION) ---------- */}
+                    {/* ---------- Payment Summary ---------- */}
                     {(expenseItems.length > 0 || miscItems.length > 0) && (
                         <div>
                             <h4 className="text-sm font-semibold text-white/80 mb-3">
@@ -613,7 +688,9 @@ const ExpanseDetailModal = ({
                             <span className="text-sm text-gray-400">
                                 {expense.status === 'PENDING'
                                     ? 'Approval Status:'
-                                    : 'Approved By:'}
+                                    : expense.status === 'REJECTED'
+                                        ? 'Rejected By:'
+                                        : 'Approved By:'}
                             </span>
                             <span className="text-sm text-white font-medium">
                                 {approverName}
@@ -634,7 +711,7 @@ const ExpanseDetailModal = ({
                                 View Attachment
                             </button>
                         )}
-                        
+
                         <button
                             onClick={handleDownloadPDF}
                             className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg hover:bg-emerald-500/30 transition-colors cursor-pointer text-sm"

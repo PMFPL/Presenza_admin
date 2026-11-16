@@ -145,7 +145,7 @@ export const useRequestedExpanseList = () => {
                 "S No": index + 1,
                 "Email": item.employee?.email || "-",
                 "Grade": item.grade || "-",
-                "Purpose": item.businessPurpose || "-",
+                "Purpose": item.purpose || "-",
                 "Travel Type": item.travelType || "-",
                 "From": item.fromLocation || "-",
                 "To": item.toLocation || "-",

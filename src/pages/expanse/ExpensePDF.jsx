@@ -1,344 +1,280 @@
 // File: src\components\expanse\ExpensePDF.jsx
 
 import jsPDF from 'jspdf';
-
-// Centralized color palette (RGB arrays are the most reliable across jsPDF versions —
-// hex strings are not consistently supported by setTextColor/setFillColor/setDrawColor).
-const COLORS = {
-    primary: [255, 107, 53],      // #ff6b35
-    textDark: [51, 51, 51],       // #333333
-    textMuted: [85, 85, 85],      // #555555
-    textLight: [153, 153, 153],   // #999999
-    white: [255, 255, 255],
-    border: [220, 220, 220],
-    fillLight: [248, 248, 248],
-    success: [34, 197, 94],       // #22c55e
-    danger: [239, 68, 68],        // #ef4444
-    warning: [245, 158, 11],      // #f59e0b
-};
-
-// jsPDF's standard fonts (Helvetica) do not include a glyph for ₹, which renders as a
-// broken/missing character. Using "Rs." guarantees correct, consistent rendering.
-const CURRENCY_PREFIX = 'Rs. ';
-
-const formatAmount = (value) => {
-    const num = Number(value);
-    return `${CURRENCY_PREFIX}${Number.isFinite(num) ? num.toFixed(2) : '0.00'}`;
-};
+import { captalizeWords } from '../../utils/captalizeWords';
+import { formatedDate } from '../../utils/formateddateAndTime';
 
 export const generateExpensePDF = async (expenseData) => {
     try {
-        // Calculate total amount
-        let totalAmount = 0;
-        if (expenseData.expenses && typeof expenseData.expenses === 'object') {
-            totalAmount = Object.values(expenseData.expenses).reduce(
-                (sum, expense) => sum + (Number(expense?.amount) || 0),
-                0
-            );
-        }
+        // -------- Data Calculation --------
+        let travelAmount = 0, roomAmount = 0, foodAmount = 0, otherAmount = 0;
+        let computedTotal = 0, computedCompany = 0, computedSelf = 0;
 
-        // Get employee name
-        const employeeName = expenseData.employee?.fullName ||
-            expenseData.employee?.name ||
-            expenseData.employee?.email?.split('@')[0] ||
-            'Unknown';
-
-        // Get approver name from approvedBy object
-        let approverName = 'Not Assigned';
-        if (expenseData.approvedBy) {
-            if (typeof expenseData.approvedBy === 'object') {
-                approverName = expenseData.approvedBy.fullName ||
-                    expenseData.approvedBy.name ||
-                    expenseData.approvedBy.email ||
-                    'Not Assigned';
-            } else {
-                approverName = expenseData.approvedBy;
-            }
-        } else if (expenseData.status === 'PENDING') {
-            approverName = 'Pending Approval';
-        }
-
-        // Get all expense items
-        const expenseItems = [];
         if (expenseData.expenses && typeof expenseData.expenses === 'object') {
             Object.entries(expenseData.expenses).forEach(([key, value]) => {
-                expenseItems.push({
-                    type: key.charAt(0).toUpperCase() + key.slice(1),
-                    paymentMethod: value?.paymentMethod || '-',
-                    amount: Number(value?.amount) || 0,
-                });
+                const amt = Number(value?.amount) || 0;
+                const type = key.toLowerCase();
+                computedTotal += amt;
+
+                if ((value?.paymentMethod || '').toUpperCase() === 'COMPANY') computedCompany += amt;
+                if ((value?.paymentMethod || '').toUpperCase() === 'SELF') computedSelf += amt;
+
+                if (type.includes('travel')) travelAmount += amt;
+                else if (type.includes('hotel') || type.includes('room')) roomAmount += amt;
+                else if (type.includes('food')) foodAmount += amt;
+                else otherAmount += amt;
             });
         }
 
+        if (Array.isArray(expenseData.miscItems)) {
+            expenseData.miscItems.forEach((item) => {
+                const amt = Number(item?.amount) || 0;
+                computedTotal += amt;
+                otherAmount += amt;
+                if ((item?.paymentMethod || '').toUpperCase() === 'COMPANY') computedCompany += amt;
+                if ((item?.paymentMethod || '').toUpperCase() === 'SELF') computedSelf += amt;
+            });
+        }
+
+        const finalTotal = (typeof expenseData.totalAmount === 'number' && expenseData.totalAmount > 0) ? expenseData.totalAmount : computedTotal;
+        const finalCompanyPaid = (typeof expenseData.companyPaidAmount === 'number' && expenseData.companyPaidAmount > 0) ? expenseData.companyPaidAmount : computedCompany;
+        const finalReimbursable = (typeof expenseData.selfPaidAmount === 'number' && expenseData.selfPaidAmount > 0) ? expenseData.selfPaidAmount : (computedSelf > 0 ? computedSelf : finalTotal - finalCompanyPaid);
+
+        // -------- Employee & Meta Data --------
+        const employeeName = expenseData.employee?.fullName || expenseData.employee?.name || 'Unknown';
+        const employeeCode = expenseData.employee?.employeeCode || expenseData.employee?.empCode || '-';
+        const department = expenseData.employee?.departmentName || expenseData.employee?.department?.name || expenseData.employee?.department?.departmentName || '-';
+        
+        let approverName = 'Pending Approval';
+        const status = (expenseData.status || '').toUpperCase();
+        if (status === 'REJECTED') {
+            approverName = expenseData.rejectedBy?.fullName || expenseData.rejectedBy?.name || expenseData.rejectedBy || 'Not Assigned';
+        } else if (status !== 'PENDING') {
+            approverName = expenseData.approvedBy?.fullName || expenseData.approvedBy?.name || expenseData.approvedBy || 'Not Assigned';
+        }
+
+        const claimMonth = expenseData.createdAt 
+            ? new Date(expenseData.createdAt).toLocaleString('default', { month: 'long', year: 'numeric' }) 
+            : '-';
+
+        // -------- PDF Setup --------
         const doc = new jsPDF('p', 'mm', 'a4');
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 15;
-        let yPosition = 15;
+        const pageWidth = doc.internal.pageSize.getWidth(); // 210
+        const margin = 10;
+        let y = 10;
 
-        const setText = (c) => doc.setTextColor(...c);
-        const setFill = (c) => doc.setFillColor(...c);
-        const setDraw = (c) => doc.setDrawColor(...c);
-
-        const ensureSpace = (neededHeight, topMargin = 20) => {
-            if (yPosition + neededHeight > pageHeight - 20) {
-                doc.addPage();
-                yPosition = topMargin;
-                return true;
+        // Helper functions
+        const formatRs = (val) => `Rs. ${Number(val).toFixed(2)}`;
+        const drawRect = (x, yPos, w, h, fillColor = null) => {
+            if (fillColor) {
+                doc.setFillColor(...fillColor);
+                doc.rect(x, yPos, w, h, 'F');
             }
-            return false;
+            doc.setDrawColor(0, 0, 0);
+            doc.setLineWidth(0.2);
+            doc.rect(x, yPos, w, h);
         };
 
-        // ------ HEADER ------
-        doc.setFontSize(20);
-        setText(COLORS.primary);
-        doc.text('EXPENSE DETAILS', pageWidth / 2, yPosition, { align: 'center' });
-        yPosition += 10;
+        // -------- 1. Yellow Header --------
+        doc.setFillColor(255, 215, 0); // Yellow
+        doc.rect(margin, y, pageWidth - margin * 2, 8, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(0, 0, 0);
+        doc.text('Paul Merchants', pageWidth / 2, y + 5.5, { align: 'center' });
+        y += 8;
 
-        setDraw(COLORS.primary);
-        doc.setLineWidth(0.3);
-        doc.line(margin, yPosition, pageWidth - margin, yPosition);
-        yPosition += 10;
-
-        // ------ EMPLOYEE INFORMATION ------
-        doc.setFontSize(12);
-        setText(COLORS.textDark);
-        doc.text('Employee Information', margin, yPosition);
-        yPosition += 8;
-
-        const empBoxHeight = 32;
-        ensureSpace(empBoxHeight);
-
-        setDraw(COLORS.border);
-        setFill(COLORS.fillLight);
-        doc.rect(margin, yPosition - 2, pageWidth - margin * 2, empBoxHeight, 'F');
-        doc.rect(margin, yPosition - 2, pageWidth - margin * 2, empBoxHeight);
-
-        doc.setFontSize(9);
-        let lineY = yPosition + 6;
-        const labelX = margin + 8;
-        const valueX = margin + 45;
-
-        setText(COLORS.textDark);
-        doc.text('Email:', labelX, lineY);
-        setText(COLORS.textMuted);
-        doc.text(expenseData.employee?.email || '-', valueX, lineY);
-        lineY += 7;
-
-        setText(COLORS.textDark);
-        doc.text('Grade:', labelX, lineY);
-        setText(COLORS.textMuted);
-        doc.text(expenseData.grade || '-', valueX, lineY);
-        lineY += 7;
-
-        setText(COLORS.textDark);
-        doc.text('Travel Type:', labelX, lineY);
-        setText(COLORS.textMuted);
-        doc.text(expenseData.travelType || '-', valueX, lineY);
-        lineY += 7;
-
-        setText(COLORS.textDark);
-        doc.text('Status:', labelX, lineY);
-        const statusColor =
-            expenseData.status === 'APPROVED' ? COLORS.success :
-            expenseData.status === 'REJECTED' ? COLORS.danger :
-            COLORS.warning;
-        setText(statusColor);
-        doc.text(expenseData.status || '-', valueX, lineY);
-
-        yPosition += empBoxHeight + 6;
-
-        // ------ TRIP DETAILS ------
-        doc.setFontSize(12);
-        setText(COLORS.textDark);
-        doc.text('Trip Details', margin, yPosition);
-        yPosition += 8;
-
-        const tripLabelX = margin + 8;
-        const tripValueX = margin + 42;
-        const tripMaxWidth = pageWidth - margin - tripValueX - 8 + margin; // usable width for wrapped text
-        const wrapWidth = pageWidth - margin - (tripValueX - margin) - 8;
-
-        // Pre-compute wrapped lines so we know the real box height up front (was previously
-        // a fixed 40mm box that could overflow when Purpose/From/To text wrapped to extra lines).
-        doc.setFontSize(9);
-        const purposeLines = doc.splitTextToSize(expenseData.businessPurpose || '-', wrapWidth);
-        const fromLines = doc.splitTextToSize(expenseData.fromLocation || '-', wrapWidth);
-        const toLines = doc.splitTextToSize(expenseData.toLocation || '-', wrapWidth);
-
-        const rowGap = 2;
-        const lineHeight = 5;
-        const tripBoxHeight =
-            6 + // top padding before first row
-            purposeLines.length * lineHeight + rowGap +
-            fromLines.length * lineHeight + rowGap +
-            toLines.length * lineHeight + rowGap +
-            lineHeight + 4; // distance/date row + bottom padding
-
-        ensureSpace(tripBoxHeight);
-
-        setDraw(COLORS.border);
-        setFill(COLORS.fillLight);
-        doc.rect(margin, yPosition - 2, pageWidth - margin * 2, tripBoxHeight, 'F');
-        doc.rect(margin, yPosition - 2, pageWidth - margin * 2, tripBoxHeight);
-
-        let tripY = yPosition + 6;
-
-        // Purpose
-        setText(COLORS.textDark);
-        doc.text('Purpose:', tripLabelX, tripY);
-        setText(COLORS.textMuted);
-        doc.text(purposeLines, tripValueX, tripY);
-        tripY += purposeLines.length * lineHeight + rowGap;
-
-        // From
-        setText(COLORS.textDark);
-        doc.text('From:', tripLabelX, tripY);
-        setText(COLORS.textMuted);
-        doc.text(fromLines, tripValueX, tripY);
-        tripY += fromLines.length * lineHeight + rowGap;
-
-        // To
-        setText(COLORS.textDark);
-        doc.text('To:', tripLabelX, tripY);
-        setText(COLORS.textMuted);
-        doc.text(toLines, tripValueX, tripY);
-        tripY += toLines.length * lineHeight + rowGap;
-
-        // Distance & Date — placed on separate lines to avoid overlap when distance is long
-        setText(COLORS.textDark);
-        doc.text('Distance:', tripLabelX, tripY);
-        setText(COLORS.textMuted);
-        const distanceText = `${expenseData.distanceKm || expenseData.tripDistance || '0'} km`;
-        doc.text(distanceText, tripValueX, tripY);
-
-        const fromDateStr = expenseData.fromDate ? new Date(expenseData.fromDate).toLocaleDateString() : '-';
-        const toDateStr = expenseData.toDate ? new Date(expenseData.toDate).toLocaleDateString() : '-';
-        setText(COLORS.textDark);
-        doc.text('Date:', tripLabelX + 70, tripY);
-        setText(COLORS.textMuted);
-        doc.text(`${fromDateStr} - ${toDateStr}`, tripLabelX + 90, tripY);
-
-        yPosition += tripBoxHeight + 8;
-
-        // ------ EXPENSE BREAKDOWN ------
-        ensureSpace(20);
-        doc.setFontSize(12);
-        setText(COLORS.textDark);
-        doc.text('Expense Breakdown', margin, yPosition);
-        yPosition += 8;
-
-        const tableStartX = margin + 5;
-        const totalTableWidth = pageWidth - margin * 2 - 10;
-        const typeWidth = totalTableWidth * 0.45;
-        const methodWidth = totalTableWidth * 0.25;
-        const amountWidth = totalTableWidth * 0.30;
-
-        const typeX = tableStartX;
-        const methodX = typeX + typeWidth;
-        const amountX = methodX + methodWidth;
-
-        const drawTableHeader = () => {
-            setFill(COLORS.primary);
-            doc.rect(tableStartX, yPosition, totalTableWidth, 8, 'F');
-            setText(COLORS.white);
-            doc.setFontSize(8);
-            doc.text('Expense Type', typeX + 4, yPosition + 6);
-            doc.text('Payment Method', methodX + 4, yPosition + 6);
-            doc.text(`Amount (${CURRENCY_PREFIX.trim()})`, amountX + 4, yPosition + 6);
-            yPosition += 10;
-        };
-
-        drawTableHeader();
-
-        if (expenseItems.length > 0) {
-            expenseItems.forEach((item, index) => {
-                if (yPosition > 250) {
-                    doc.addPage();
-                    yPosition = 20;
-                    drawTableHeader();
-                }
-
-                if (index % 2 === 0) {
-                    setFill(COLORS.fillLight);
-                    doc.rect(tableStartX, yPosition - 2, totalTableWidth, 8, 'F');
-                }
-
-                setText(COLORS.textDark);
-                doc.setFontSize(8);
-
-                const typeLines = doc.splitTextToSize(item.type, typeWidth - 8);
-                doc.text(typeLines, typeX + 4, yPosition + 4);
-
-                const methodLines = doc.splitTextToSize(item.paymentMethod, methodWidth - 8);
-                doc.text(methodLines, methodX + 4, yPosition + 4);
-
-                const amountText = formatAmount(item.amount);
-                doc.text(amountText, amountX + 4, yPosition + 4);
-
-                const maxLines = Math.max(typeLines.length, methodLines.length);
-                const rowHeight = Math.max(8, maxLines * 5 + 2);
-                yPosition += rowHeight;
-            });
-        } else {
-            setText(COLORS.textLight);
-            doc.setFontSize(9);
-            doc.text('No expense details available', pageWidth / 2, yPosition + 5, { align: 'center' });
-            yPosition += 12;
-        }
-
-        yPosition += 3;
-
-        // ------ TOTAL ------
-        ensureSpace(20);
-        setDraw([200, 200, 200]);
-        doc.setLineWidth(0.3);
-        doc.line(tableStartX, yPosition, pageWidth - margin, yPosition);
-        yPosition += 8;
-
-        doc.setFontSize(12);
-        setText(COLORS.textDark);
-        doc.text('Total Amount :', pageWidth - margin - 60, yPosition);
-        setText(COLORS.primary);
+        // -------- 2. Main Title --------
         doc.setFontSize(14);
-        doc.text(formatAmount(totalAmount), pageWidth - margin, yPosition, { align: 'right' });
+        doc.text('PAUL MERCHANTS FINANCE PRIVATE LIMITED', pageWidth / 2, y + 8, { align: 'center' });
+        doc.setFontSize(11);
+        doc.text('Travelling Expenses Claim Bill', pageWidth / 2, y + 14, { align: 'center' });
+        y += 16;
 
-        yPosition += 15;
+        // -------- 3. Employee Info Table --------
+        const colW = (pageWidth - margin * 2) / 3;
+        const rowH = 8;
+        const x1 = margin;
+        const x2 = margin + colW;
+        const x3 = margin + colW * 2;
 
-        // ------ BOTTOM SECTION ------
-        ensureSpace(20);
-
-        setDraw([200, 200, 200]);
-        doc.setLineWidth(0.3);
-        doc.line(margin, yPosition, pageWidth - margin, yPosition);
-        yPosition += 8;
-
-        // Left: Employee Name
+        // Row 1
+        drawRect(x1, y, colW, rowH);
+        drawRect(x2, y, colW, rowH);
+        drawRect(x3, y, pageWidth - margin - x3, rowH);
+        doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);
-        setText(COLORS.textDark);
-        doc.text('Employee:', margin, yPosition);
-        setText(COLORS.textMuted);
-        doc.text(employeeName, margin + 28, yPosition);
+        doc.text(`Employee Name: ${employeeName}`, x1 + 2, y + 5.5);
+        doc.text(`Reporting To: ${approverName}`, x2 + 2, y + 5.5);
+        doc.text(`Vehicle Type: ${captalizeWords(expenseData.travelType) || '-'}`, x3 + 2, y + 5.5);
+        y += rowH;
 
-        // Right: Approver Name
-        setText(COLORS.textDark);
-        const approverLabel = expenseData.status === 'PENDING' ? 'Approval Status:' : 'Approved By:';
-        doc.text(approverLabel, pageWidth - margin - 75, yPosition);
-        setText(COLORS.textMuted);
-        doc.text(approverName, pageWidth - margin, yPosition, { align: 'right' });
+        // Row 2
+        drawRect(x1, y, colW, rowH);
+        drawRect(x2, y, colW, rowH);
+        drawRect(x3, y, pageWidth - margin - x3, rowH);
+        doc.text(`Department: ${department}`, x1 + 2, y + 5.5);
+        doc.text(`Claim month: ${claimMonth}`, x2 + 2, y + 5.5);
+        doc.text(`Fuel Type: -`, x3 + 2, y + 5.5);
+        y += rowH;
 
-        yPosition += 8;
+        // Row 3
+        drawRect(x1, y, colW, rowH);
+        drawRect(x2, y, colW, rowH);
+        drawRect(x3, y, pageWidth - margin - x3, rowH);
+        doc.text(`Employee Code: ${employeeCode}`, x1 + 2, y + 5.5);
+        doc.text(`Employee Grade: ${expenseData.grade || '-'}`, x2 + 2, y + 5.5);
+        doc.text(`State/Zone: -`, x3 + 2, y + 5.5);
+        y += rowH;
 
-        // ------ FOOTER ------
-        doc.setFontSize(7);
-        setText(COLORS.textLight);
-        doc.text(`Generated: ${new Date().toLocaleString()}`, margin, pageHeight - 8);
-        doc.text('System Generated Document', pageWidth - margin, pageHeight - 8, { align: 'right' });
+        // -------- 4. Table Title --------
+        doc.setFont('helvetica', 'bold');
+        doc.text('Travelling Expense Details:', margin + 2, y + 5.5);
+        y += 8;
 
-        // Save the PDF
+        // -------- 5. Expense Table Header --------
+        doc.setFillColor(240, 240, 240); // Light gray
+        doc.rect(margin, y, pageWidth - margin * 2, rowH, 'F');
+        
+        const cols = [
+            { label: 'Date', width: 15 },
+            { label: 'From', width: 35 },
+            { label: 'To', width: 35 },
+            { label: 'Purpose', width: 30 },
+            { label: 'Travel', width: 12 },
+            { label: 'Room', width: 12 },
+            { label: 'Food', width: 12 },
+            { label: 'Other', width: 12 },
+            { label: 'Total', width: 12 },
+            { label: 'Remarks', width: 15 }
+        ];
+
+        let currentX = margin;
+        doc.setFontSize(8);
+        cols.forEach((col) => {
+            drawRect(currentX, y, col.width, rowH);
+            doc.text(col.label, currentX + col.width / 2, y + 5.5, { align: 'center' });
+            currentX += col.width;
+        });
+        y += rowH;
+
+        // -------- 6. Expense Table Row --------
+        // Prepare data (Notice the new remarksLines wrapper)
+        const fromLines = doc.splitTextToSize(expenseData.fromLocation || '-', 33);
+        const toLines = doc.splitTextToSize(expenseData.toLocation || '-', 33);
+        const purposeLines = doc.splitTextToSize(expenseData.businessPurpose || expenseData.purpose || '-', 28);
+        const remarksLines = doc.splitTextToSize(expenseData.remarks || '-', 13);
+        
+        const maxLines = Math.max(fromLines.length, toLines.length, purposeLines.length, remarksLines.length, 1);
+        const dynamicRowH = Math.max(10, maxLines * 4 + 4);
+
+        currentX = margin;
+        doc.setFont('helvetica', 'normal');
+        
+        // Draw row borders
+        cols.forEach((col) => {
+            drawRect(currentX, y, col.width, dynamicRowH);
+            currentX += col.width;
+        });
+
+        // Write row data
+        currentX = margin;
+        doc.text(formatedDate(expenseData.fromDate) || '-', currentX + 7.5, y + 5.5, { align: 'center' });
+        currentX += cols[0].width;
+        
+        doc.text(fromLines, currentX + 2, y + 5.5);
+        currentX += cols[1].width;
+        
+        doc.text(toLines, currentX + 2, y + 5.5);
+        currentX += cols[2].width;
+        
+        doc.text(purposeLines, currentX + 2, y + 5.5);
+        currentX += cols[3].width;
+
+        doc.text(travelAmount ? travelAmount.toString() : '', currentX + cols[4].width - 2, y + 5.5, { align: 'right' });
+        currentX += cols[4].width;
+
+        doc.text(roomAmount ? roomAmount.toString() : '', currentX + cols[5].width - 2, y + 5.5, { align: 'right' });
+        currentX += cols[5].width;
+
+        doc.text(foodAmount ? foodAmount.toString() : '', currentX + cols[6].width - 2, y + 5.5, { align: 'right' });
+        currentX += cols[6].width;
+
+        doc.text(otherAmount ? otherAmount.toString() : '', currentX + cols[7].width - 2, y + 5.5, { align: 'right' });
+        currentX += cols[7].width;
+
+        doc.text(finalTotal.toString(), currentX + cols[8].width - 2, y + 5.5, { align: 'right' });
+        currentX += cols[8].width;
+
+        // Draw wrapped Remarks in table
+        doc.text(remarksLines, currentX + 2, y + 5.5);
+        
+        y += dynamicRowH;
+
+        // -------- 7. Expense Table Total Row --------
+        const totalColSpanWidth = cols.slice(0, 8).reduce((sum, c) => sum + c.width, 0);
+        currentX = margin;
+        
+        drawRect(currentX, y, totalColSpanWidth, rowH);
+        drawRect(currentX + totalColSpanWidth, y, cols[8].width, rowH);
+        drawRect(currentX + totalColSpanWidth + cols[8].width, y, cols[9].width, rowH);
+        
+        doc.setFont('helvetica', 'bold');
+        doc.text('Total', currentX + totalColSpanWidth - 4, y + 5.5, { align: 'right' });
+        doc.text(finalTotal.toString(), currentX + totalColSpanWidth + cols[8].width - 2, y + 5.5, { align: 'right' });
+        y += rowH;
+
+        // -------- 8. Dedicated Remarks Section --------
+        // Added for better visibility if remarks are long
+        doc.setFont('helvetica', 'bold');
+        doc.text('Remarks:', margin + 2, y + 5.5);
+        doc.setFont('helvetica', 'normal');
+        y += 6;
+        
+        const fullRemarksText = expenseData.remarks || 'No remarks provided.';
+        const splitRemarks = doc.splitTextToSize(fullRemarksText, pageWidth - margin * 2 - 4);
+        const remarksBoxHeight = Math.max(8, splitRemarks.length * 5 + 4);
+        
+        drawRect(margin, y, pageWidth - margin * 2, remarksBoxHeight);
+        doc.text(splitRemarks, margin + 2, y + 5.5);
+        y += remarksBoxHeight + 6;
+
+        // -------- 9. Summary Table --------
+        doc.setFont('helvetica', 'normal');
+        const summaryColW = (pageWidth - margin * 2) / 2;
+        
+        const summaryRows = [
+            { label: 'Grand Total:', value: formatRs(finalTotal) },
+            { label: 'Local Conveyance Expenses :', value: '-' },
+            { label: 'Total Expenses Incurred:', value: formatRs(finalTotal) },
+            { label: 'Spent by Company:', value: formatRs(finalCompanyPaid) },
+            { label: 'Balance to Receive:', value: formatRs(finalReimbursable) },
+            { label: 'Amount Approved:', value: formatRs(status === 'APPROVED' ? finalTotal : 0) },
+            { label: 'Approval Status:', value: captalizeWords(expenseData.status) }
+        ];
+
+        summaryRows.forEach((row) => {
+            drawRect(margin, y, summaryColW, rowH);
+            drawRect(margin + summaryColW, y, summaryColW, rowH);
+            
+            doc.text(row.label, margin + 2, y + 5.5);
+            doc.text(row.value, margin + summaryColW * 2 - 2, y + 5.5, { align: 'right' });
+            y += rowH;
+        });
+
+        // -------- 10. Signatures --------
+        const sigH = 20;
+        drawRect(margin, y, summaryColW, sigH);
+        drawRect(margin + summaryColW, y, summaryColW, sigH);
+        
+        doc.setFont('helvetica', 'bold');
+        doc.text('Employee Signature', margin + 2, y + 5.5);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Authorized Signature', margin + summaryColW * 2 - 2, y + sigH - 4, { align: 'right' });
+
+        // -------- 11. Save PDF --------
         const safeName = String(employeeName).replace(/\s+/g, '_').replace(/[^\w-]/g, '');
-        const fileName = `Expense_${safeName}_${new Date().toISOString().split('T')[0]}.pdf`;
-        doc.save(fileName);
+        doc.save(`Expense_Claim_${safeName}.pdf`);
         return true;
 
     } catch (error) {

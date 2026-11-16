@@ -1,10 +1,16 @@
+
+
 // File: src\pages\AttendanceReport\AttendanceReport.jsx
 
 import Loading from "../../components/common/Loading";
 import Table from "../../components/common/Table";
 import GettingError from "../../components/common/GettingError";
 import { useAttendanceReport } from "./hooks/useAttendanceReport";
-import { getAttendanceReportColumns } from "./data/AttendanceReportColumns";
+import {
+  getAttendanceReportColumns,
+  getEffectiveAttendanceStatus,
+  computeAttendanceSummary,
+} from "./data/AttendanceReportColumns";
 import { useMemo, useState, useEffect } from "react";
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import * as XLSX from 'xlsx';
@@ -104,120 +110,68 @@ const AttendanceReport = () => {
     }
   }, [rangeFromDate, rangeToDate]);
 
-  // const fetchRangeData = async () => {
-  //   setRangeLoading(true);
-  //   setRangeError(null);
-  //   try {
-  //     const response = await getRequest(`/attendance/report?startDate=${rangeFromDate}&endDate=${rangeToDate}`);
-  //     if (response.success) {
-  //       const report = response.data?.data?.report || response.data?.report || [];
-  //       // Normalize dates
-  //       const normalized = report.map(emp => ({
-  //         ...emp,
-  //         attendance: (emp.attendance || []).map(rec => ({
-  //           ...rec,
-  //           date: normalizeDate(rec.date) || rec.date,
-  //           // The current date should be treated as Present in the report.
-  //           // If the API sends ABSENT for today, show it as PRESENT instead.
-  //           attendanceStatus:
-  //             isCurrentDate(rec.date) && rec.attendanceStatus === "ABSENT"
-  //               ? "PRESENT"
-  //               : rec.attendanceStatus
-  //         }))
-  //       }));
-  //       setRangeReportData(normalized);
+  const fetchRangeData = async () => {
+    setRangeLoading(true);
+    setRangeError(null);
+    try {
+      const response = await getRequest(`/attendance/report?startDate=${rangeFromDate}&endDate=${rangeToDate}`);
+     
+      if (response.success) {
+        const report = response.data?.data?.report || response.data?.report || [];
+        // Debug: Check this to see if the backend is sending short leave data!
+        console.log("Fetched report data=============>:", report);
 
-  //       // Build monthDays from the attendance records (all unique dates in range)
-  //       const datesSet = new Set();
-  //       normalized.forEach(emp => {
-  //         emp.attendance?.forEach(rec => {
-  //           if (rec.date) datesSet.add(rec.date);
-  //         });
-  //       });
-  //       const sortedDates = Array.from(datesSet).sort();
-  //       const days = sortedDates.map(dateStr => {
-  //         const date = new Date(dateStr);
-  //         return {
-  //           date: dateStr,
-  //           day: date.getDate(),
-  //           dayName: date.toLocaleString('en', { weekday: 'short' }),
-  //         };
-  //       });
-  //       setRangeMonthDays(days);
-  //     } else {
-  //       setRangeError(response.message || 'Failed to fetch report');
-  //       setRangeReportData([]);
-  //       setRangeMonthDays([]);
-  //     }
-  //   } catch (err) {
-  //     setRangeError(err.message || 'Something went wrong');
-  //     setRangeReportData([]);
-  //     setRangeMonthDays([]);
-  //   } finally {
-  //     setRangeLoading(false);
-  //   }
-  // };
+        // Normalize dates only — do NOT override attendance status.
+        // The backend already returns the correct status (PRESENT / ABSENT /
+        // WEEK_OFF / HOLIDAY / ON_LEAVE / HALF_DAY / SHORT_LEAVE / NOT_JOINED).
+        // Any frontend override (e.g. forcing today to PRESENT) would corrupt
+        // the data and cause every employee to appear present.
+        const normalized = report.map(emp => ({
+          ...emp,
+          attendance: (emp.attendance || []).map(rec => ({
+            ...rec,
+            date: normalizeDate(rec.date) || rec.date,
+          }))
+        }));
 
-const fetchRangeData = async () => {
-  setRangeLoading(true);
-  setRangeError(null);
-  try {
-    const response = await getRequest(`/attendance/report?startDate=${rangeFromDate}&endDate=${rangeToDate}`);
-   
-    if (response.success) {
-      const report = response.data?.data?.report || response.data?.report || [];
-console.log("Fetched report data=============>:", report);
-      // Normalize dates only — do NOT override attendance status.
-      // The backend already returns the correct status (PRESENT / ABSENT /
-      // WEEK_OFF / HOLIDAY / ON_LEAVE / HALF_DAY / SHORT_LEAVE / NOT_JOINED).
-      // Any frontend override (e.g. forcing today to PRESENT) would corrupt
-      // the data and cause every employee to appear present.
-      const normalized = report.map(emp => ({
-        ...emp,
-        attendance: (emp.attendance || []).map(rec => ({
-          ...rec,
-          date: normalizeDate(rec.date) || rec.date,
-        }))
-      }));
+        setRangeReportData(normalized);
 
-      setRangeReportData(normalized);
-
-      // Build monthDays from the attendance records (all unique dates in range)
-      const datesSet = new Set();
-      normalized.forEach(emp => {
-        emp.attendance?.forEach(rec => {
-          if (rec.date) datesSet.add(rec.date);
+        // Build monthDays from the attendance records (all unique dates in range)
+        const datesSet = new Set();
+        normalized.forEach(emp => {
+          emp.attendance?.forEach(rec => {
+            if (rec.date) datesSet.add(rec.date);
+          });
         });
-      });
-      const sortedDates = Array.from(datesSet).sort();
-      const days = sortedDates.map(dateStr => {
-        const date = new Date(dateStr);
-        return {
-          date: dateStr,
-          day: date.getDate(),
-          dayName: date.toLocaleString('en', { weekday: 'short' }),
-          fullDate: date.toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          }),
-        };
-      });
-      setRangeMonthDays(days);
-    } else {
-      setRangeError(response.message || 'Failed to fetch report');
+        const sortedDates = Array.from(datesSet).sort();
+        const days = sortedDates.map(dateStr => {
+          const date = new Date(dateStr);
+          return {
+            date: dateStr,
+            day: date.getDate(),
+            dayName: date.toLocaleString('en', { weekday: 'short' }),
+            fullDate: date.toLocaleDateString('en-US', {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            }),
+          };
+        });
+        setRangeMonthDays(days);
+      } else {
+        setRangeError(response.message || 'Failed to fetch report');
+        setRangeReportData([]);
+        setRangeMonthDays([]);
+      }
+    } catch (err) {
+      setRangeError(err.message || 'Something went wrong');
       setRangeReportData([]);
       setRangeMonthDays([]);
+    } finally {
+      setRangeLoading(false);
     }
-  } catch (err) {
-    setRangeError(err.message || 'Something went wrong');
-    setRangeReportData([]);
-    setRangeMonthDays([]);
-  } finally {
-    setRangeLoading(false);
-  }
-};
+  };
 
 
   // The data to display (filtered by search)
@@ -271,7 +225,9 @@ console.log("Fetched report data=============>:", report);
         const dateHeader = formatDateHeader(dayInfo.date);
         const record = emp.attendance?.find(r => r.date === dayInfo.date);
         if (record) {
-          const status = record.attendanceStatus;
+          // ✅ FIX: Use the effective status so PRESENT-with-short-leave
+          //    days are exported as "Short Leave", matching the UI.
+          const status = getEffectiveAttendanceStatus(record);
           let label = "-";
           switch(status) {
             case "PRESENT": label = "Present"; break;
@@ -289,17 +245,9 @@ console.log("Fetched report data=============>:", report);
         }
       });
 
-      // Compute summary from attendance records (only within the range)
-      const attendance = emp.attendance || [];
-      const summary = {
-        present: attendance.filter(r => r.attendanceStatus === 'PRESENT').length,
-        absent: attendance.filter(r => r.attendanceStatus === 'ABSENT').length,
-        halfDay: attendance.filter(r => r.attendanceStatus === 'HALF_DAY').length,
-        shortLeave: attendance.filter(r => r.attendanceStatus === 'SHORT_LEAVE').length,
-        weekOff: attendance.filter(r => r.attendanceStatus === 'WEEK_OFF').length,
-        holiday: attendance.filter(r => r.attendanceStatus === 'HOLIDAY').length,
-        onLeave: attendance.filter(r => r.attendanceStatus === 'ON_LEAVE').length,
-      };
+      // ✅ FIX: Compute summary from attendance records using the SAME 
+      // effective status logic so the export totals match the UI.
+      const summary = computeAttendanceSummary(emp.attendance);
 
       row["Present"] = summary.present;
       row["Absent"] = summary.absent;

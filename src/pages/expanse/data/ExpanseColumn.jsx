@@ -45,10 +45,10 @@ export const getRequestedExpanseColumn = ({
       render: (row) => (
         <div className="relative group w-fit flex justify-center">
           <p className="max-w-[100px] truncate cursor-pointer">
-            {captalizeWords(row.businessPurpose)}
+            {captalizeWords(row.purpose)}
           </p>
           <div className="absolute left-0 top-[-15px] z-50 hidden group-hover:block bg-gray-800 text-white text-xs rounded-md px-3 py-2 shadow-lg min-w-[200px] max-w-[300px] break-words">
-            <p>{captalizeWords(row.businessPurpose)}</p>
+            <p>{captalizeWords(row.purpose)}</p>
           </div>
         </div>
       ),
@@ -117,54 +117,70 @@ export const getRequestedExpanseColumn = ({
     {
       header: "Actions",
       render: (row) => {
-        const hasReceipt = !!(row.receipt || row.imageUrl || row.url);
-        
+        const hasReceipt = !!(
+          row.receipt ||
+          row.receiptUrl ||
+          row.imageUrl ||
+          row.url ||
+          row.receiptImage ||
+          (Array.isArray(row.receipts) && row.receipts.length > 0)
+        );
+        const isPending = row.status === 'PENDING';
+
         return (
-          <div className="flex gap-2 justify-center items-center">
-            {/* Download PDF Button */}
+          <div className="flex gap-2 justify-center items-center flex-wrap">
+            {/* Download PDF Button — same emerald styling as modal */}
             {downloadPDF && (
-              <button 
+              <button
                 title="Download PDF"
                 onClick={() => downloadPDF(row)}
-                className="p-1.5 bg-green-500/20 text-green-400 rounded hover:bg-green-500/30 transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors cursor-pointer text-xs font-medium"
               >
-                <FileText size={16} />
+                <FileText size={14} />
+                PDF
               </button>
             )}
-            
-            {/* View Receipt Button */}
+
+            {/* View Receipt Button — same blue styling as modal */}
             {hasReceipt && viewReceipt && (
-              <button 
+              <button
                 title="View Receipt"
                 onClick={() => viewReceipt(row)}
-                className="p-1.5 bg-blue-500/20 text-blue-400 rounded hover:bg-blue-500/30 transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors cursor-pointer text-xs font-medium"
               >
-                <Eye size={16} />
+                <Eye size={14} />
+                View
               </button>
             )}
-            
-            {/* Approve Button */}
-            <button 
-              title="Approve" 
-              disabled={row.status !== 'PENDING'}
+
+            {/* Approve Button — same green gradient as modal */}
+            <button
+              title={isPending ? 'Approve' : 'Already processed'}
+              disabled={!isPending}
               onClick={() => handleExpanseApproval(row._id)}
-              className={row.status !== 'PENDING' ? 'cursor-not-allowed' : 'cursor-pointer'}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                isPending
+                  ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white cursor-pointer'
+                  : 'bg-gray-500/20 text-gray-400 cursor-not-allowed'
+              }`}
             >
-              <CheckCircle className={`text-green-500 transition-transform duration-300 hover:scale-110
-                ${row.status !== 'PENDING' ? 'opacity-20' : ''}`} 
-              />
+              <CheckCircle size={14} />
+              {isPending ? 'Approve' : 'Approved'}
             </button>
-            
-            {/* Reject Button */}
-            <button 
-              title="Reject"
-              disabled={row.status !== 'PENDING'}
+
+            {/* Reject Button — same red-tinted styling as modal */}
+            <button
+              title={isPending ? 'Reject' : 'Already processed'}
+              disabled={!isPending}
               onClick={() => handleExpanseRejection(row._id)}
-              className={row.status !== 'PENDING' ? 'cursor-not-allowed' : 'cursor-pointer'}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                isPending
+                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 cursor-pointer'
+                  : 'bg-gray-500/20 text-gray-400 cursor-not-allowed'
+              }`}
             >
-              <XCircle className={`text-red-500 transition-transform duration-300 hover:scale-110
-                ${row.status !== 'PENDING' ? 'opacity-20' : ''}`} 
-              />
+              <XCircle size={14} />
+              Reject
             </button>
           </div>
         );

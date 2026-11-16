@@ -61,11 +61,16 @@ function RequestedExpanseList() {
   }, [filteredExpanseList, searchTerm]);
 
   // ---- Calculate reimbursement amount ----
-  // ✅ Uses API's selfPaidAmount (already includes SELF-paid expenses + miscItems).
-  // Falls back to manual calculation if selfPaidAmount is missing/null.
+  // ✅ Prefer API's selfPaidAmount ONLY when it is a positive number.
+  // API sometimes returns 0 even though SELF-paid expenses exist (see travel=77 case),
+  // so we treat 0 as "not provided" and fall back to manual computation.
   const calculateReimbursement = (row) => {
-    // 1️⃣ Preferred: API-provided selfPaidAmount
-    if (row?.selfPaidAmount !== undefined && row?.selfPaidAmount !== null) {
+    // 1️⃣ Preferred: API-provided selfPaidAmount (only if > 0)
+    if (
+      row?.selfPaidAmount !== undefined &&
+      row?.selfPaidAmount !== null &&
+      Number(row.selfPaidAmount) > 0
+    ) {
       return Number(row.selfPaidAmount) || 0;
     }
 
@@ -296,8 +301,8 @@ function RequestedExpanseList() {
 
                           {/* Purpose */}
                           <td className="px-4 py-4 text-sm text-white/80 max-w-[180px]">
-                            <span className="truncate block" title={row.businessPurpose || '-'}>
-                              {row.businessPurpose || '-'}
+                            <span className="truncate block" title={row.purpose || '-'}>
+                              {row.purpose || '-'}
                             </span>
                           </td>
 
